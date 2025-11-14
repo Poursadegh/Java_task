@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="30">
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n</Property>
+        <Property name="LOG_PATTERN_JSON">{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","logger":"%logger{36}","message":"%message","correlationId":"%X{correlationId}","userId":"%X{userId}","service":"order-service","thread":"%t","exception":"%ex{short}","stackTrace":"%ex{full}"}%n</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${sys:logging.pattern:-${LOG_PATTERN}}"/>
+        </Console>
+
+        <Console name="JsonConsole" target="SYSTEM_OUT">
+            <JsonLayout compact="true" eventEol="true" includeStacktrace="true">
+                <KeyValuePair key="correlationId" value="$${ctx:correlationId}"/>
+                <KeyValuePair key="userId" value="$${ctx:userId}"/>
+                <KeyValuePair key="service" value="order-service"/>
+            </JsonLayout>
+        </Console>
+
+        <RollingFile name="RollingFile" fileName="logs/order-service.log"
+                     filePattern="logs/order-service-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${LOG_PATTERN}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <RollingFile name="JsonFile" fileName="logs/order-service.json"
+                     filePattern="logs/order-service-%d{yyyy-MM-dd}-%i.json.gz">
+            <JsonLayout compact="true" eventEol="true" includeStacktrace="true">
+                <KeyValuePair key="correlationId" value="$${ctx:correlationId}"/>
+                <KeyValuePair key="userId" value="$${ctx:userId}"/>
+                <KeyValuePair key="service" value="order-service"/>
+            </JsonLayout>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="com.microservices" level="${sys:logging.level.com.microservices:-INFO}"/>
+        <Logger name="org.springframework" level="${sys:logging.level.org.springframework:-INFO}"/>
+        <Logger name="org.hibernate" level="${sys:logging.level.org.hibernate:-WARN}"/>
+        <Root level="${sys:logging.level.root:-INFO}">
+            <AppenderRef ref="${sys:logging.appender:-Console}"/>
+            <AppenderRef ref="RollingFile"/>
+            <AppenderRef ref="JsonFile"/>
+        </Root>
+    </Loggers>
+</Configuration>
+
