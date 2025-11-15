@@ -4,7 +4,6 @@ import com.microservices.common.annotation.RequireRole;
 import com.microservices.common.dto.PaymentDTO;
 import com.microservices.common.dto.StatusUpdateDTO;
 import com.microservices.common.enums.UserRole;
-import com.microservices.paymentservice.config.SsoConfig;
 import com.microservices.paymentservice.service.PaymentService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,7 +30,6 @@ import java.util.Objects;
 public class PaymentController {
 
     private final PaymentService paymentService;
-    private final SsoConfig ssoConfig;
 
     @PostMapping
     @RequireRole({UserRole.USER, UserRole.ADMIN})

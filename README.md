@@ -26,6 +26,8 @@ This system consists of three main components:
 - **Lombok**: For reducing boilerplate code
 - **Bucket4j**: For rate limiting
 - **Jakarta Validation**: For comprehensive field validation
+- **Resilience4j**: For Circuit Breaker and Retry patterns
+- **RabbitMQ**: For event-driven messaging and async communication
 
 ## System Architecture
 
@@ -46,6 +48,7 @@ This microservices-based system implements a distributed Order and Payment manag
                     │   API Gateway   │
                     │  (Port 8080)    │
                     │  Rate Limiting  │
+                    │  SSO Auth       │
                     └──────┬──────────┘
                            │
             ┌──────────────┼──────────────┐
@@ -58,10 +61,20 @@ This microservices-based system implements a distributed Order and Payment manag
             │              │
             │              │ WebClient
             │              │ (Reactive HTTP)
+            │              │ Circuit Breaker
+            │              │ Retry
             │              │
             │      ┌───────▼──────┐
             │      │Order Service │
             │      │(for validation)│
+            │      └──────────────┘
+            │              │
+            │              │ RabbitMQ
+            │              │ (Events)
+            │              │
+            │      ┌───────▼──────┐
+            │      │  RabbitMQ    │
+            │      │  (Port 5672) │
             │      └──────────────┘
             │
     ┌───────▼──────┐ ┌───────▼──────┐ ┌───────▼──────┐
@@ -91,6 +104,10 @@ This microservices-based system implements a distributed Order and Payment manag
 - ✅ Spring Security
 - ✅ **Pagination support for orders and payments**
 - ✅ **Field validations with best practices**
+- ✅ **Circuit Breaker pattern with Resilience4j**
+- ✅ **Retry mechanism with exponential backoff**
+- ✅ **Event-driven communication with RabbitMQ**
+- ✅ **WebClient timeout configuration for resilient communication**
 
 ## Getting Started
 
@@ -101,6 +118,7 @@ This microservices-based system implements a distributed Order and Payment manag
 - Docker and Docker Compose (for containerized deployment)
 - PostgreSQL (for local development or use Docker)
 - Redis (for caching, use Docker)
+- RabbitMQ (for messaging, use Docker)
 
 ### Quick Start Options
 
@@ -136,6 +154,7 @@ This will start:
 - API Gateway on port 8080
 - PostgreSQL databases
 - Redis cache
+- RabbitMQ message broker (port 5672, Management UI on 15672)
 
 #### Option 2: IntelliJ IDEA (Recommended for Development)
 
@@ -447,6 +466,9 @@ GET /api/orders?page=0&size=5&sort=customerId,asc&sort=createdAt,desc
 - Validates order exists before processing using WebClient
 - Updates order status to "PAID" after successful payment
 - Reactive communication with load balancing
+- Circuit Breaker protection for order service calls
+- Automatic retry with exponential backoff
+- Event-driven communication via RabbitMQ
 
 **Features:**
 - Virtual threads enabled
@@ -471,9 +493,11 @@ GET /api/orders?page=0&size=5&sort=customerId,asc&sort=createdAt,desc
 - Path-based routing
 - Strip prefix filter
 - CORS configuration
-- Rate limiting with Bucket4j
+- Rate limiting with Bucket4j (configurable capacity and refill)
 - Virtual threads enabled
 - Spring Security configured
+- SSO authentication filter
+- Automatic cache cleanup for rate limiting
 
 ## Configuration
 
@@ -493,10 +517,24 @@ GET /api/orders?page=0&size=5&sort=customerId,asc&sort=createdAt,desc
 - `ORDER_SERVICE_URL` - Order service URL (default: `http://localhost:8081`)
 - `REDIS_HOST` - Redis host (default: `localhost`)
 - `REDIS_PORT` - Redis port (default: `6379`)
+- `RABBITMQ_HOST` - RabbitMQ host (default: `localhost`)
+- `RABBITMQ_PORT` - RabbitMQ port (default: `5672`)
+- `RABBITMQ_USERNAME` - RabbitMQ username (default: `guest`)
+- `RABBITMQ_PASSWORD` - RabbitMQ password (default: `guest`)
 
 **API Gateway:**
 - `ORDER_SERVICE_URL` - Order service URL (default: `http://localhost:8081`)
 - `PAYMENT_SERVICE_URL` - Payment service URL (default: `http://localhost:8082`)
+- `RATE_LIMIT_CAPACITY` - Rate limit capacity (default: `100`)
+- `RATE_LIMIT_REFILL_TOKENS` - Tokens to refill (default: `100`)
+- `RATE_LIMIT_REFILL_DURATION_MINUTES` - Refill duration in minutes (default: `1`)
+- `RATE_LIMIT_CACHE_CLEANUP_INTERVAL_MINUTES` - Cache cleanup interval (default: `60`)
+
+**Order Service:**
+- `RABBITMQ_HOST` - RabbitMQ host (default: `localhost`)
+- `RABBITMQ_PORT` - RabbitMQ port (default: `5672`)
+- `RABBITMQ_USERNAME` - RabbitMQ username (default: `guest`)
+- `RABBITMQ_PASSWORD` - RabbitMQ password (default: `guest`)
 
 ### Application Profiles
 
@@ -572,6 +610,54 @@ All services expose health endpoints via Spring Boot Actuator:
 - Constraint violations handled with detailed messages
 - Proper error messages in JSON format
 
+## Resilience and Communication Patterns
+
+### Circuit Breaker (Resilience4j)
+
+The system implements Circuit Breaker pattern to prevent cascade failures:
+
+- **Configuration**: Failure rate threshold of 50%
+- **Sliding Window**: 10 requests
+- **Open State Duration**: 10 seconds
+- **Half-Open State**: Automatic transition with 3 permitted calls
+- **Fallback Methods**: Graceful degradation when service is unavailable
+
+**Applied to:**
+- Payment Service → Order Service communication
+- All inter-service calls via WebClient
+
+### Retry Mechanism
+
+- **Max Attempts**: 3 retries
+- **Wait Duration**: 1 second initial delay
+- **Exponential Backoff**: Enabled with multiplier of 2
+- **Applied to**: All inter-service HTTP calls
+
+### Event-Driven Communication (RabbitMQ)
+
+The system uses RabbitMQ for asynchronous event-driven communication:
+
+**Events Published:**
+- `OrderCreatedEvent` - When a new order is created
+- `OrderStatusUpdatedEvent` - When order status changes
+- `PaymentProcessedEvent` - When payment is processed (success or failure)
+
+**Event Listeners:**
+- Payment Service listens to order events
+- Enables loose coupling between services
+- Supports eventual consistency
+
+**RabbitMQ Management UI:**
+- Access at `http://localhost:15672`
+- Default credentials: `guest/guest`
+
+### WebClient Timeout Configuration
+
+- **Connect Timeout**: 5 seconds
+- **Read Timeout**: 10 seconds
+- **Write Timeout**: 10 seconds
+- **Response Timeout**: 10 seconds
+
 ## Performance Optimization
 
 ### Current Optimizations
@@ -582,6 +668,9 @@ All services expose health endpoints via Spring Boot Actuator:
 - Redis distributed caching
 - Virtual threads for high concurrency
 - Database partitioning for millions of records
+- Circuit Breaker to prevent cascade failures
+- Retry mechanism for transient failures
+- Event-driven architecture for async processing
 
 ### Scalability
 
@@ -589,6 +678,8 @@ All services expose health endpoints via Spring Boot Actuator:
 - **Database Scaling**: Partitioned tables support millions of records
 - **Caching**: Redis reduces database load significantly
 - **Virtual Threads**: Support for millions of concurrent requests
+- **Message Queue**: RabbitMQ enables async processing and decoupling
+- **Circuit Breaker**: Prevents overload during high traffic
 
 ## Troubleshooting
 
@@ -629,7 +720,22 @@ SELECT run_partition_maintenance();
 ```
 order-payment-system/
 ├── common/                          # Shared DTOs and common code
+│   └── src/main/java/com/microservices/common/
+│       ├── dto/                     # Data Transfer Objects
+│       ├── enums/                   # Enumerations
+│       ├── exception/               # Custom exceptions
+│       └── event/                    # Event classes
+│           ├── OrderCreatedEvent.java
+│           ├── OrderStatusUpdatedEvent.java
+│           └── PaymentProcessedEvent.java
 ├── order-service/                   # Order microservice
+│   ├── src/main/java/com/microservices/orderservice/
+│   │   ├── config/
+│   │   │   └── RabbitMQConfig.java  # RabbitMQ configuration
+│   │   ├── messaging/
+│   │   │   └── OrderEventPublisher.java  # Event publisher
+│   │   └── service/
+│   │       └── OrderService.java    # Publishes events
 │   ├── src/main/resources/
 │   │   └── db/migration/           # Database migration scripts
 │   │       ├── V1__create_orders_partitioned_table.sql
@@ -640,7 +746,25 @@ order-payment-system/
 │   ├── maintain-partitions.ps1     # Partition maintenance script
 │   └── setup-partitioning.ps1      # Partitioning setup script
 ├── payment-service/                # Payment microservice
+│   ├── src/main/java/com/microservices/paymentservice/
+│   │   ├── config/
+│   │   │   ├── RabbitMQConfig.java  # RabbitMQ configuration
+│   │   │   └── WebClientConfig.java # WebClient with timeout
+│   │   ├── messaging/
+│   │   │   ├── PaymentEventPublisher.java  # Event publisher
+│   │   │   └── OrderEventListener.java    # Event listener
+│   │   └── service/
+│   │       ├── PaymentService.java  # Publishes events
+│   │       └── OrderServiceClient.java  # With Circuit Breaker
+│   └── src/main/resources/
+│       └── application.properties   # Resilience4j config
 ├── api-gateway/                     # API Gateway service
+│   ├── src/main/java/com/microservices/apigateway/
+│   │   └── filter/
+│   │       ├── RateLimitFilter.java  # Enhanced rate limiting
+│   │       └── SsoAuthFilter.java    # SSO authentication
+│   └── src/main/resources/
+│       └── application.properties   # Rate limit config
 ├── .idea/runConfigurations/         # IntelliJ run configurations
 │   ├── OrderServiceApplication.xml
 │   ├── PaymentServiceApplication.xml
@@ -671,17 +795,22 @@ order-payment-system/
 
 1. **Set up PostgreSQL databases** with partitioning
 2. **Set up Redis cache**
-3. **Configure environment variables**
-4. **Build Docker images**:
+3. **Set up RabbitMQ message broker**
+4. **Configure environment variables** (see Configuration section)
+5. **Build Docker images**:
    ```bash
    mvn clean package
    docker-compose build
    ```
-5. **Deploy**:
+6. **Deploy**:
    ```bash
    docker-compose up -d
    ```
-6. **Schedule partition maintenance** (monthly)
+7. **Verify services**:
+   - Check health endpoints: `/actuator/health`
+   - Access RabbitMQ Management UI: `http://localhost:15672`
+   - Monitor circuit breaker metrics
+8. **Schedule partition maintenance** (monthly)
 
 ## Monitoring
 
@@ -689,6 +818,9 @@ order-payment-system/
 - Health checks configured for all services
 - Metrics available at `/actuator/metrics`
 - Partition monitoring via SQL queries
+- RabbitMQ Management UI at `http://localhost:15672`
+- Circuit Breaker metrics via Resilience4j
+- Rate limit metrics in API Gateway
 
 ## Security Considerations
 
@@ -698,16 +830,20 @@ order-payment-system/
 - SQL injection prevention (JPA)
 - Error message sanitization
 - Spring Security configured
-- Rate limiting with Bucket4j
+- Rate limiting with Bucket4j (configurable per IP)
 - CSRF disabled for stateless API
 - Path variable validation
+- SSO authentication filter in API Gateway
+- Token-based authentication between services
 
 ### Future Enhancements
 
-- Authentication (JWT/OAuth2)
-- Authorization (Role-based access)
+- Full JWT/OAuth2 implementation
+- Enhanced role-based access control
 - HTTPS/TLS
 - Secrets management (Vault)
+- Distributed tracing (Zipkin/Jaeger)
+- Advanced monitoring (Prometheus/Grafana)
 
 ## License
 

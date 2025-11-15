@@ -3,7 +3,6 @@ package com.microservices.paymentservice.service;
 import com.microservices.common.dto.PaymentDTO;
 import com.microservices.common.dto.StatusUpdateDTO;
 import com.microservices.common.enums.OrderStatus;
-import com.microservices.common.enums.PaymentMethod;
 import com.microservices.common.enums.PaymentStatus;
 import com.microservices.common.event.PaymentProcessedEvent;
 import com.microservices.common.exception.BusinessException;
