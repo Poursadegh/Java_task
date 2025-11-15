@@ -2,7 +2,10 @@ package com.microservices.orderservice.service;
 
 import com.microservices.common.dto.OrderDTO;
 import com.microservices.common.enums.OrderStatus;
+import com.microservices.common.event.OrderCreatedEvent;
+import com.microservices.common.event.OrderStatusUpdatedEvent;
 import com.microservices.common.exception.ResourceNotFoundException;
+import com.microservices.orderservice.messaging.OrderEventPublisher;
 import com.microservices.orderservice.model.Order;
 import com.microservices.orderservice.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +29,7 @@ import java.util.Objects;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderEventPublisher orderEventPublisher;
 
     public Mono<OrderDTO> createOrder(OrderDTO orderDTO) {
         return Mono.fromCallable(() -> {
@@ -38,6 +42,12 @@ public class OrderService {
             return orderRepository.save(order);
         })
         .subscribeOn(Schedulers.boundedElastic())
+        .doOnNext(savedOrder -> {
+            // Publish order created event
+            OrderDTO savedOrderDTO = convertToDTO(savedOrder);
+            OrderCreatedEvent event = OrderCreatedEvent.fromOrderDTO(savedOrderDTO);
+            orderEventPublisher.publishOrderCreated(event);
+        })
         .map(this::convertToDTO);
     }
 
@@ -81,8 +91,17 @@ public class OrderService {
         return Mono.fromCallable(() -> {
             Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order", orderId));
+            OrderStatus oldStatus = order.getStatus();
             order.setStatus(status);
-            return orderRepository.save(order);
+            Order savedOrder = orderRepository.save(order);
+            // Publish order status updated event
+            OrderStatusUpdatedEvent event = OrderStatusUpdatedEvent.create(
+                savedOrder.getId(),
+                oldStatus,
+                savedOrder.getStatus()
+            );
+            orderEventPublisher.publishOrderStatusUpdated(event);
+            return savedOrder;
         })
         .subscribeOn(Schedulers.boundedElastic())
         .map(this::convertToDTO);

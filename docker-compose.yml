@@ -2,9 +2,7 @@
 
 services:
   order-service:
-    build:
-      context: .
-      dockerfile: order-service/Dockerfile
+    image: java_task-order-service:latest
     container_name: order-service
     ports:
       - "8081:8081"
@@ -15,10 +13,16 @@ services:
       - DB_PASSWORD=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=guest
+      - RABBITMQ_PASSWORD=guest
     depends_on:
       order-db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - microservices-network
@@ -29,9 +33,7 @@ services:
       retries: 3
 
   payment-service:
-    build:
-      context: .
-      dockerfile: payment-service/Dockerfile
+    image: java_task-payment-service:latest
     container_name: payment-service
     ports:
       - "8082:8082"
@@ -43,12 +45,18 @@ services:
       - ORDER_SERVICE_URL=http://order-service:8081
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=guest
+      - RABBITMQ_PASSWORD=guest
     depends_on:
       payment-db:
         condition: service_healthy
       order-service:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - microservices-network
@@ -59,9 +67,7 @@ services:
       retries: 3
 
   api-gateway:
-    build:
-      context: .
-      dockerfile: api-gateway/Dockerfile
+    image: java_task-api-gateway:latest
     container_name: api-gateway
     ports:
       - "8080:8080"
@@ -120,7 +126,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7
     container_name: redis
     ports:
       - "6379:6379"
@@ -133,7 +139,43 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:}
+    command: redis-server --appendonly yes
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # consul:
+  #   image: consul:latest
+  #   container_name: consul
+  #   ports:
+  #     - "8500:8500"
+  #     - "8600:8600/udp"
+  #   volumes:
+  #     - consul-data:/consul/data
+  #   networks:
+  #     - microservices-network
+  #   command: consul agent -dev -client=0.0.0.0 -ui
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8500/v1/status/leader"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
 networks:
   microservices-network:
@@ -143,4 +185,6 @@ volumes:
   order-db-data:
   payment-db-data:
   redis-data:
+  rabbitmq-data:
+  # consul-data:
 

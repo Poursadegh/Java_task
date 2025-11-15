@@ -5,8 +5,10 @@ import com.microservices.common.dto.StatusUpdateDTO;
 import com.microservices.common.enums.OrderStatus;
 import com.microservices.common.enums.PaymentMethod;
 import com.microservices.common.enums.PaymentStatus;
+import com.microservices.common.event.PaymentProcessedEvent;
 import com.microservices.common.exception.BusinessException;
 import com.microservices.common.exception.ResourceNotFoundException;
+import com.microservices.paymentservice.messaging.PaymentEventPublisher;
 import com.microservices.paymentservice.model.Payment;
 import com.microservices.paymentservice.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderServiceClient orderServiceClient;
     private final PlatformTransactionManager transactionManager;
+    private final PaymentEventPublisher paymentEventPublisher;
 
     public Mono<PaymentDTO> processPayment(PaymentDTO paymentDTO, String token) {
         log.info("Processing payment for orderId: {}", paymentDTO.getOrderId());
@@ -69,6 +72,15 @@ public class PaymentService {
                     .subscribeOn(Schedulers.boundedElastic());
             })
             .flatMap(completedPayment -> {
+                // Publish payment processed event
+                PaymentProcessedEvent event = PaymentProcessedEvent.create(
+                    completedPayment.getId(),
+                    completedPayment.getOrderId(),
+                    completedPayment.getAmount(),
+                    completedPayment.getStatus()
+                );
+                paymentEventPublisher.publishPaymentProcessed(event);
+                
                 StatusUpdateDTO statusUpdate = new StatusUpdateDTO(OrderStatus.PAID);
                 
                 return orderServiceClient.updateOrderStatus(
@@ -84,7 +96,16 @@ public class PaymentService {
                         txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
                         return txTemplate.execute(status -> {
                             completedPayment.setStatus(PaymentStatus.FAILED);
-                            return paymentRepository.save(completedPayment);
+                            Payment failedPayment = paymentRepository.save(completedPayment);
+                            // Publish failed payment event
+                            PaymentProcessedEvent failedEvent = PaymentProcessedEvent.create(
+                                failedPayment.getId(),
+                                failedPayment.getOrderId(),
+                                failedPayment.getAmount(),
+                                PaymentStatus.FAILED
+                            );
+                            paymentEventPublisher.publishPaymentProcessed(failedEvent);
+                            return failedPayment;
                         });
                     })
                     .subscribeOn(Schedulers.boundedElastic())
@@ -188,6 +209,15 @@ public class PaymentService {
                     .subscribeOn(Schedulers.boundedElastic());
             })
             .flatMap(completedPayment -> {
+                // Publish payment processed event
+                PaymentProcessedEvent event = PaymentProcessedEvent.create(
+                    completedPayment.getId(),
+                    completedPayment.getOrderId(),
+                    completedPayment.getAmount(),
+                    completedPayment.getStatus()
+                );
+                paymentEventPublisher.publishPaymentProcessed(event);
+                
                 StatusUpdateDTO statusUpdate = new StatusUpdateDTO(OrderStatus.PAID);
                 
                 return orderServiceClient.updateOrderStatus(
@@ -203,7 +233,16 @@ public class PaymentService {
                         txTemplate.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
                         return txTemplate.execute(status -> {
                             completedPayment.setStatus(PaymentStatus.FAILED);
-                            return paymentRepository.save(completedPayment);
+                            Payment failedPayment = paymentRepository.save(completedPayment);
+                            // Publish failed payment event
+                            PaymentProcessedEvent failedEvent = PaymentProcessedEvent.create(
+                                failedPayment.getId(),
+                                failedPayment.getOrderId(),
+                                failedPayment.getAmount(),
+                                PaymentStatus.FAILED
+                            );
+                            paymentEventPublisher.publishPaymentProcessed(failedEvent);
+                            return failedPayment;
                         });
                     })
                     .subscribeOn(Schedulers.boundedElastic())
